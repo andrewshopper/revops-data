@@ -98,7 +98,7 @@ SELECT t.task_id, t.account_id, o.id as opportunity_id, t.created_by_id, t.owner
       WHEN LOWER(coalesce(t.salesLoft_type, t.activity_type)) IN ('call', 'message') THEN 'Call'
       WHEN LOWER(coalesce(t.salesLoft_type, t.activity_type)) IN ('meeting', 'in-person meeting') THEN 'Meeting'
       ELSE 'Other'
-    END AS activity_type, o.opportunity_source,
+    END AS activity_type, o.Opportunity_Source__c,
     srr.market_segment, srr.team_segment, srr.sales_region,
   -- CASE WHEN ur_at.name LIKE '%INC%' AND NOT(campaign.campaign LIKE '%Incubation-SMB%' OR camp.name LIKE '%Incubation-SMB%') THEN 'Incubation B2B'
   --   -- WHEN ur_at.name LIKE '%MM%' AND ur_at.name NOT LIKE '%X%' AND o.opportunity_source = 'Outbound' THEN 'Mid Market'
@@ -111,13 +111,13 @@ SELECT t.task_id, t.account_id, o.id as opportunity_id, t.created_by_id, t.owner
 -- FROM sdp-prd-commercial.raw_salesforce_banff.from_longboat_tasks t
 FROM tasks_and_events t
   LEFT JOIN accounts_opps acc ON t.account_id = acc.account_id AND COALESCE(t.what_id,'') NOT LIKE '0068%' AND DATE(t.created_date) BETWEEN COALESCE(DATE_ADD(prev_opportunity_close_date,INTERVAL 1 DAY),DATE('1900-01-01')) AND opportunity_close_date
-  LEFT JOIN sdp-prd-commercial.raw_salesforce_banff.from_longboat_opportunities o ON COALESCE(t.what_id,acc.opportunity_id) = o.id
-  LEFT JOIN (SELECT DISTINCT opportunity_id, market_segment FROM shopify-dw.marts.sales_funnel_accumulating_facts) fun ON o.id = fun.opportunity_id
-  LEFT JOIN sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign camp ON o.campaign_id = camp.id
-  LEFT JOIN sdp-prd-commercial.raw_salesforce_banff.from_longboat_users u_cb ON t.created_by_id = u_cb.id
-  LEFT JOIN sdp-prd-commercial.raw_salesforce_banff.from_longboat_user_roles ur_cb ON ur_cb.id = u_cb.user_role_id
-  LEFT JOIN sdp-prd-commercial.raw_salesforce_banff.from_longboat_users u_at ON t.owner_id = u_at.id
-  LEFT JOIN sdp-prd-commercial.raw_salesforce_banff.from_longboat_user_roles ur_at ON ur_at.id = u_at.user_role_id
+  LEFT JOIN `shopify-dw.raw_salesforce_banff.opportunity` o ON COALESCE(t.what_id,acc.opportunity_id) = o.id
+  LEFT JOIN (SELECT DISTINCT opportunity_id, market_segment FROM `shopify-dw.marts.sales_funnel_accumulating_facts`) fun ON o.id = fun.opportunity_id
+  LEFT JOIN `shopify-dw.base.base__salesforce_banff_campaign` camp ON o.CampaignId = camp.campaign_id
+  LEFT JOIN `shopify-dw.base.base__salesforce_banff_users` u_cb ON t.created_by_id = u_cb.user_id
+  LEFT JOIN `shopify-dw.base.base__salesforce_banff_user_roles` ur_cb ON ur_cb.user_role_id = u_cb.user_role_id
+  LEFT JOIN `shopify-dw.base.base__salesforce_banff_users` u_at ON t.owner_id = u_at.user_id
+  LEFT JOIN `shopify-dw.base.base__salesforce_banff_user_roles` ur_at ON ur_at.user_role_id = u_at.user_role_id
   LEFT JOIN campaign ON t.account_id = campaign.account_id AND DATE(t.created_date) BETWEEN DATE(campaign.start_date) AND DATE(campaign.end_date) AND campaign.ranking = 1
   LEFT JOIN mm_outbound_program mm ON t.account_id = mm.id
   LEFT JOIN `sdp-prd-commercial.raw_google_sheets.from_longboat_revenue_sales_rep_role` srr ON ur_cb.name = srr.sales_rep_role
@@ -138,11 +138,7 @@ SELECT
   FORMAT_DATE('%A', DATE(task_completed_date)) as completed_weekday_name, -- this is to have the weekday names like Monday, Tuesday, etc.
   DATE_TRUNC(DATE(task_completed_date), week(monday)) as week_of_completed_date
 FROM final 
-WHERE market_segment IS NOT NULL 
--- and task_assigned_to LIKE '%Stephen Green%'
--- and activity_type in ('Call', 'Meeting')
--- and activity_type in ('Email')
--- and task_completed_date >= '2023-11-01'
+WHERE market_segment IS NOT NULL
 and task_completed_date <= current_date('America/Los_Angeles')
 GROUP BY 1,2,3,4,5,6,7,8
 ORDER BY final.task_completed_date
