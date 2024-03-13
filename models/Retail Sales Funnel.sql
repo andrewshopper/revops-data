@@ -18,7 +18,7 @@ SELECT
       WHEN lower(lead_source) IN ('partner directory inquiry', 'partner referral', 'partner pos referral', 'partner')
               THEN 'Partner'
       WHEN lower(lead_source) IN ('3field', '3rd party lead gen', 'contact us', 'content', 'content syndication', 'demo', 'direct mail', 'drift',
-                                      'event', 'facebook lead ads', 'guru pos referral', 'guru referral - vault', 'lead list', 'marketing campaign', 
+                                      'event', 'event - booth scan', 'event - sales meeting', 'email management', 'facebook lead ads', 'guru pos referral', 'guru referral - vault', 'lead list', 'marketing campaign', 
                                       'other', 'paid', 'spaces', 'inbound call', 'advertisement', 'customer event', 'inbound sales inquiry', 'website', 'webinar') 
               THEN 'Demand-Gen'
               ELSE 'Other Inbound' 
@@ -127,8 +127,10 @@ retail_sales_opportunities AS (
     lead_source_bucket,
     retail_sales_funnel_accumulating_snapshot.team_segment,
     ---- Country based fields
-    CASE WHEN shopify_hardware_eligible_on IS NOT NULL THEN country_code ELSE 'Rest of the World' END AS country_code,
-    CASE WHEN shopify_hardware_eligible_on IS NOT NULL THEN country_name ELSE 'Rest of the World' END AS country_name,
+    -- CASE WHEN shopify_hardware_eligible_on IS NOT NULL THEN country_code ELSE 'Rest of the World' END AS country_code,
+    -- CASE WHEN shopify_hardware_eligible_on IS NOT NULL THEN country_name ELSE 'Rest of the World' END AS country_name,
+    CASE WHEN shopify_hardware_eligible_since IS NOT NULL THEN country_code ELSE 'Rest of the World' END AS country_code,
+    CASE WHEN shopify_hardware_eligible_since IS NOT NULL THEN country_name ELSE 'Rest of the World' END AS country_name,
     region as region_code,
     1 AS SQL,
     COALESCE(is_sal, 0) AS SAL,
@@ -154,7 +156,8 @@ retail_sales_opportunities AS (
   FROM retail_sales_funnel_accumulating_snapshot
   JOIN opportunity_attributes USING (opportunity_id)
   LEFT JOIN `shopify-dw.utils.countries` USING (country_code)
-  LEFT JOIN `shopify-data-bigquery-global.retail.country_shopify_hardware_eligibility_facts` USING (country_code) #pending migration
+  -- LEFT JOIN `shopify-data-bigquery-global.retail.country_shopify_hardware_eligibility_facts` USING (country_code) #pending migration
+  LEFT JOIN `sdp-prd-retail.marts.country_shopify_hardware_eligibility` USING (country_code) --post migration, waiting for reply from #retail-data-science
   LEFT JOIN sal_opportunities USING (opportunity_id)
 )
 
@@ -310,7 +313,22 @@ marketing_qualified_leads AS (
             WHEN Retail_Locations__c IN ('No locations yet', '') OR Retail_Locations__c IS NULL THEN '06. Unknown' 
             ELSE Retail_Locations__c 
         END AS location_band,
-        COALESCE(bl.Annual_Offline_Revenue__c, tl.annual_revenue_band) AS revenue_band,
+        -- COALESCE(bl.Annual_Offline_Revenue__c, tl.annual_revenue_band) AS revenue_band,
+        case 
+  when bl.Annual_Offline_Revenue__c = 'Up to $5,000' then '2500'
+  when bl.Annual_Offline_Revenue__c = '$0 to $50,000' then '25000'
+  when bl.Annual_Offline_Revenue__c = '$5,000 to $50,000' then '27500'
+  when bl.Annual_Offline_Revenue__c = '$0 to $250,000' then '125000'
+  when bl.Annual_Offline_Revenue__c = '$50,000 to $250,000' then '150000'
+  when bl.Annual_Offline_Revenue__c = '$50,000 to $500,000' then '275000'
+  when bl.Annual_Offline_Revenue__c = '$250,000 to $500,000' then '375000'
+  when bl.Annual_Offline_Revenue__c = '$250,000 to $1,000,000' then '625000'
+  when bl.Annual_Offline_Revenue__c = '$500,000 to $1,000,000' then '750000'
+  when bl.Annual_Offline_Revenue__c in ('$1,000,000+') then '5000000'
+  when bl.Annual_Offline_Revenue__c in ('$1,000,000 to $10,000,000') then '5500000'
+  when bl.Annual_Offline_Revenue__c = '$10,000,000+' then '15000000'
+  --WHEN Third_Party_Enriched_Revenue__c > 0 THEN Third_Party_Enriched_Revenue__c
+end as revenue_band,
         '01. Marketing qualified leads' AS metric,
         'Not Applicable for MQLs'  as intuit_opportunity,
         'Not Applicable for MQLs' as created_by,
