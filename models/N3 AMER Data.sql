@@ -68,14 +68,17 @@ case
   when Annual_Offline_Revenue__c = '$10,000,000+' then 15000000
   --WHEN Third_Party_Enriched_Revenue__c > 0 THEN Third_Party_Enriched_Revenue__c
 end as lead_estimated_total_gmv,
+case when Third_Party_Enriched_Revenue__c >= 200000000 then 200000000 else Third_Party_Enriched_Revenue__c end as Third_Party_Enriched_Revenue_max_200m,
 case when DATE(createddate) < '2024-01-01' then '2024-01-25 19:20:50 UTC' else createddate end as new_created_date, -- Bassam wants to show 2024 only since these leads were reassigned to N3
 case when DATE(Marketing_Qualified_Lead_Date__c) < '2024-01-01' then '2024-01-25 19:20:50 UTC' else Marketing_Qualified_Lead_Date__c end as new_marketing_qualified_lead_date
 from combine)
 
 select 
   *,
-  final.lead_estimated_total_gmv as lead_estimated_offline_gmv,
-  final.lead_estimated_total_gmv as estimated_gmv,
+  case when DATE(new_marketing_qualified_lead_date) > '2024-02-06' and final.lead_estimated_total_gmv is null then Third_Party_Enriched_Revenue_max_200m else final.lead_estimated_total_gmv
+  end as lead_estimated_offline_gmv,
+  --If MQL_Date > Feb 06th - use the midpoint logic, if that is null , then use third party enriched with a cap of 200m per lead
+  -- final.lead_estimated_total_gmv as estimated_gmv,
   CASE WHEN lead_id IS NOT NULL THEN 1 ELSE 0 END as is_lead, 
   CASE WHEN new_marketing_qualified_lead_date IS NOT NULL THEN 1 ELSE 0 END is_mql, 
   CASE WHEN opportunity_id IS NOT NULL THEN 1 ELSE 0 END as is_sql, 
@@ -87,143 +90,3 @@ select
   CASE WHEN opp_stage_name NOT IN ('Pre-Qualified','Closed Lost') THEN 1 ELSE 0 END as is_sal  
 from final
 WHERE COALESCE(account_id, '') NOT IN ('0018V00002d2BY2QAM')
-
---second old code
--- WITH n3_leads AS (
--- SELECT 
---   distinct
---     l.id as lead_id, l.Owner_Role__c as lead_owner, l.ownerid AS lead_owner_id, u.name as lead_owner_name, l.leadsource, l.Annual_Offline_Revenue__c, l.Annual_Offline_Revenue_Verified__c, l.Third_Party_Enriched_Revenue__c, l.createddate, l.Marketing_Qualified_Lead_Date__c, l.Sales_Accepted_Lead_Date__c, l.ConvertedAccountId, l.ConvertedOpportunityId, l.Is_Shopify_Customer__c, l.Retail_Locations__c, l.Disqualified_Reason__c, acc.territory_name, acc.account_id, o.opp_annual_offline_revenue
--- from `shopify-dw.raw_salesforce_banff.lead` l
--- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign_member` cm
--- ON l.id = cm.lead_id
--- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign` c
--- on c.id = cm.campaign_id
--- LEFT JOIN `shopify-dw.sales.salesforce_accounts` acc
--- on l.ConvertedAccountId = acc.account_id AND l.isdeleted = false
--- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_users` u
--- on u.id = l.ownerid
--- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_opportunities` o
--- ON l.ConvertedOpportunityId = o.id
--- FULL JOIN o ON l.converted_opportunity_id = o.opportunity_id
--- where l.Owner_Role__c LIKE '%N3%' 
--- and extract (year from l.createddate) = 2024)
-
--- , n3_campaigns as (
---  SELECT 
---   distinct
---     l.id as lead_id, l.Owner_Role__c as lead_owner, l.ownerid AS lead_owner_id, u.name as lead_owner_name, l.leadsource, l.Annual_Offline_Revenue__c, l.Annual_Offline_Revenue_Verified__c, l.Third_Party_Enriched_Revenue__c, l.createddate, l.Marketing_Qualified_Lead_Date__c, l.Sales_Accepted_Lead_Date__c, l.ConvertedAccountId, l.ConvertedOpportunityId, l.Is_Shopify_Customer__c, l.Retail_Locations__c, l.Disqualified_Reason__c, acc.territory_name, acc.account_id, o.opp_annual_offline_revenue
--- from `shopify-dw.raw_salesforce_banff.lead` l
--- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign_member` cm
--- ON l.id = cm.lead_id
--- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign` c
--- on c.id = cm.campaign_id
--- LEFT JOIN `shopify-dw.sales.salesforce_accounts` acc
--- on l.ConvertedAccountId = acc.account_id AND l.isdeleted = false
--- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_opportunities` o
--- ON l.ConvertedOpportunityId = o.id and o.is_deleted = false
--- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_users` u
--- on u.id = l.ownerid
---   -- where LOWER(c.name) like '%n3%'
--- where c.name = 'N3_Lead_List_January_2024'
--- )
-
--- , union_tables as (
--- select * from n3_leads
--- UNION ALL 
--- select * from n3_campaigns
--- )
-
--- , final as (
--- select distinct *, 
--- case 
---   when Annual_Offline_Revenue__c = '$0 to $250,000' then 125000
---   when Annual_Offline_Revenue__c = '$5,000 to $50,000' then 30000
---   when Annual_Offline_Revenue__c = '$50,000 to $250,000' then 150000
---   when Annual_Offline_Revenue__c = '$250,000 to $500,000' then 375000
---   when Annual_Offline_Revenue__c = '$250,000 to $1,000,000' then 625000
---   when Annual_Offline_Revenue__c = '$500,000 to $1,000,000' then 750000
---   when Annual_Offline_Revenue__c in ('$1,000,000 to $10,000,000', '$1,000,000+') then 5000000
---   when Annual_Offline_Revenue__c = '$10,000,000+' then 10000000
--- end as estimated_gmv
--- from union_tables)
-
--- select 
---   *, 
---   case when createddate < '2024-01-01' then '2024-01-25 19:20:50 UTC' else createddate end as new_created_date, -- Bassam wants to show 2024 only since these leads were reassigned to N3
---   case when Marketing_Qualified_Lead_Date__c < '2024-01-01' then '2024-01-25 19:20:50 UTC' else Marketing_Qualified_Lead_Date__c end as new_marketing_qualified_lead_date
--- from final
-
-
---old model
--- WITH n3_leads AS 
--- (
---  SELECT 
---   distinct
---     l.id as lead_id, l.owner_role as lead_owner, l.owner_id AS lead_owner_id, u.name as lead_owner_name, l.lead_source, l.annual_offline_revenue, l.annual_online_revenue, l.annual_revenue, l.created_date, marketing_qualified_lead_date,
---     -- DATE(case when l.created_date < '2024-01-01' then '2024-01-01 19:20:50 UTC' else l.created_date end as created_date), -- Bassam wants to show 2024 only since these leads were reassigned to N3
---     -- DATE(case when marketing_qualified_lead_date < '2024-01-01' then '2024-01-01 19:20:50 UTC' else marketing_qualified_lead_date end as marketing_qualified_lead_date),
---     acc.territory_name, acc.account_id, sales_accepted_lead_date
---   FROM `sdp-prd-commercial.raw_salesforce_banff.from_longboat_leads` l
---   LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign_member` cm
---   ON l.id = cm.lead_id
---   LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign` c
---   on c.id = cm.campaign_id
---   LEFT JOIN `shopify-dw.sales.salesforce_accounts` acc
---   on l.converted_account_id = acc.account_id AND l.is_deleted = false
---   LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_users` u
---   on u.id = l.owner_id
---   where l.owner_role LIKE '%N3%' 
---   and extract (year from l.created_date) = 2024
--- )
-
--- --120 rows
--- , n3_campaigns as (
---  SELECT 
---   distinct
---     l.id as lead_id, l.owner_role as lead_owner, l.owner_id AS lead_owner_id, u.name as lead_owner_name, l.lead_source, l.annual_offline_revenue, l.annual_online_revenue, l.annual_revenue, l.created_date, marketing_qualified_lead_date,
---     -- DATE(case when l.created_date < '2024-01-01' then '2024-01-01 19:20:50 UTC' else l.created_date end as created_date), -- Bassam wants to show 2024 only since these leads were reassigned to N3
---     -- DATE(case when marketing_qualified_lead_date < '2024-01-01' then '2024-01-01 19:20:50 UTC' else marketing_qualified_lead_date end as marketing_qualified_lead_date),
---     acc.territory_name, acc.account_id, sales_accepted_lead_date
---   FROM `sdp-prd-commercial.raw_salesforce_banff.from_longboat_leads` l
---   LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign_member` cm
---   ON l.id = cm.lead_id
---   LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign` c
---   on c.id = cm.campaign_id
---   LEFT JOIN `shopify-dw.sales.salesforce_accounts` acc
---   on l.converted_account_id = acc.account_id AND l.is_deleted = false
---   LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_users` u
---   on u.id = l.owner_id
---   -- where LOWER(c.name) like '%n3%'
---   where c.name = 'N3_Lead_List_January_2024'
--- )
-
--- , union_tables as (
--- select * from n3_leads
--- UNION ALL 
--- select * from n3_campaigns
--- )
--- -- collect bands from merchants (can be very large), because its self-inputed it can be incorrect and needs to be verified by SQL which is after, we cant trust the GMV bands, once SDR talks and qualifies the merchant, we're able to find out the industry and confirm GMV
--- -- have to look at the lead source for a better assumption on MQL, dont need to look at AOR (annual offline revenue)
--- -- if MQL and has some bands, then AOF will have the bands, once fixed by Maurice (Olivia on his team) or whoever then we can report on it
--- -- ask to see how to find gmv list on the MQLs
--- -- figure out why there's one lead that isnt MQL'd, filter out MQL dates that is null
--- -- select sum(annual_revenue) from (
--- , final as (
--- select distinct *, 
--- case 
---   when annual_offline_revenue = '$0 to $250,000' then 125000
---   when annual_offline_revenue = '$5,000 to $50,000' then 30000
---   when annual_offline_revenue = '$50,000 to $250,000' then 150000
---   when annual_offline_revenue = '$250,000 to $500,000' then 375000
---   when annual_offline_revenue = '$250,000 to $1,000,000' then 625000
---   when annual_offline_revenue = '$500,000 to $1,000,000' then 750000
---   when annual_offline_revenue in ('$1,000,000 to $10,000,000', '$1,000,000+') then 5000000
---   when annual_offline_revenue = '$10,000,000+' then 10000000
--- end as estimated_gmv
--- from union_tables)
-
--- select 
---   *, 
---   case when created_date < '2024-01-01' then '2024-01-01 19:20:50 UTC' else created_date end as new_created_date, -- Bassam wants to show 2024 only since these leads were reassigned to N3
---   case when marketing_qualified_lead_date < '2024-01-01' then '2024-01-01 19:20:50 UTC' else marketing_qualified_lead_date end as new_marketing_qualified_lead_date
--- from final
