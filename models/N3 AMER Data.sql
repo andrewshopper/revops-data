@@ -7,33 +7,25 @@ WITH opp as (
 -- , case when (owner_role_at_creation__c LIKE 'AMER-%N3%' OR ur.name LIKE 'AMER-%N3%') then 'AMER' when (owner_role_at_creation__c LIKE 'EMEA-%N3%' OR ur.name LIKE 'EMEA-%N3%') then 'EMEA' else 'Other' end as opty_region
   FROM `shopify-dw.raw_salesforce_banff.opportunity` o 
   LEFT JOIN (SELECT DISTINCT opportunity_id, ops_lead_source FROM `sdp-for-analysts-platform.rev_ops_prod.modelled_rad` WHERE dataset = 'Actuals' AND year >= 2024) fun ON o.id = fun.opportunity_id
-  -- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_users` u 
-  -- ON o.ownerid = u.id 
   LEFT JOIN `shopify-dw.base.base__salesforce_banff_users` u
-  ON o.ownerid = u.user_id 
-  -- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_user_roles` ur 
-  -- ON u.user_role_id = ur.id
+  ON o.ownerid = u.user_id
   LEFT JOIN `shopify-dw.base.base__salesforce_banff_user_roles` ur
   ON u.user_role_id = ur.user_role_id
   WHERE o.isdeleted = false
-  -- AND (owner_role_at_creation__c LIKE '%N3%RET%' OR ur.name LIKE '%N3%RET%')
   AND (owner_role_at_creation__c LIKE 'AMER-%N3%' OR ur.name LIKE 'AMER-%N3%')
   AND DATE(o.createddate) >= '2024-01-01'
 )
 
 , leads as (
-  SELECT l.id as lead_id, l.Owner_Role__c as lead_owner, l.ownerid AS lead_owner_id, u.name as lead_owner_name, l.leadsource, l.status, l.Annual_Offline_Revenue__c, l.Annual_Offline_Revenue_Verified__c, l.Third_Party_Enriched_Revenue__c, l.createddate, l.Marketing_Qualified_Lead_Date__c, l.Sales_Accepted_Lead_Date__c, l.ConvertedAccountId, l.ConvertedOpportunityId, l.Is_Shopify_Customer__c, l.Retail_Locations__c, l.Disqualified_Reason__c, acc.territory_name, acc.account_id--, COALESCE(l.AnnualRevenue,l.Third_Party_Enriched_Revenue__c) as lead_estimated_total_gmv
+  SELECT l.id as lead_id, l.Owner_Role__c as lead_owner, l.ownerid AS lead_owner_id, u.name as lead_owner_name, l.leadsource, l.status, l.Annual_Offline_Revenue__c, l.Annual_Offline_Revenue_Verified__c, l.Third_Party_Enriched_Revenue__c, l.createddate, l.Marketing_Qualified_Lead_Date__c, l.Sales_Accepted_Lead_Date__c, l.ConvertedAccountId, l.ConvertedOpportunityId, l.Is_Shopify_Customer__c, l.Retail_Locations__c, l.Disqualified_Reason__c, acc.territory_name, acc.account_id, acc.name--, COALESCE(l.AnnualRevenue,l.Third_Party_Enriched_Revenue__c) as lead_estimated_total_gmv
 -- , case when (((l.Owner_Role__c LIKE 'AMER-%N3%' AND extract (year from l.createddate) = 2024) OR c.name = 'N3_Lead_List_January_2024' OR c.name = 'Content_Syndication_Retail_January_N3')) then 'AMER' when (l.Owner_Role__c LIKE 'EMEA-%N3%') then 'EMEA' else 'Other' end as region
-  FROM `shopify-dw.raw_salesforce_banff.lead` l 
-    -- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign_member` cm
+  FROM `shopify-dw.raw_salesforce_banff.lead` l
   LEFT JOIN `shopify-dw.base.base__salesforce_banff_campaign_member` cm
   ON l.id = cm.lead_id
-  -- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_campaign` c
   LEFT JOIN `shopify-dw.base.base__salesforce_banff_campaign` c
   on c.campaign_id = cm.campaign_id
   LEFT JOIN `shopify-dw.sales.salesforce_accounts` acc
   on l.ConvertedAccountId = acc.account_id AND l.isdeleted = false
-  -- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_users` u
   LEFT JOIN `shopify-dw.base.base__salesforce_banff_users` u
   on u.user_id = l.ownerid
   WHERE l.isdeleted = false 
