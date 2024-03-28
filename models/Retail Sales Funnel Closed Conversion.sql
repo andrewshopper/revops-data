@@ -40,7 +40,8 @@ opportunity_attributes AS (
               ELSE 'OTHER' -- nothing should fall into this category, we should investigate if this ever appears
         END AS owned_by,
         od.primary_shop_id,
-        od.market_segment
+        od.market_segment,
+        od.team_segment
     FROM  `shopify-dw.sales.sales_opportunity_current` AS od 
     LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_opportunities` AS o
       ON o.id = od.opportunity_id
@@ -54,7 +55,7 @@ opportunity_attributes AS (
 retail_sales_funnel_accumulating_snapshot AS (
   --- Converts the grain from product + opportunity to Opportunity
   SELECT
-    opportunity_id,
+    opportunity_id, team_segment,
     ANY_VALUE(product) AS product_name,
     -- Retail Payments amount_usd takes precedence.
     -- MAX_BY(sales_price * quantity, product) AS amount_usd,
@@ -69,7 +70,7 @@ retail_sales_funnel_accumulating_snapshot AS (
   WHERE
     product IN ('POS Pro', 'Retail Payments')
   GROUP BY
-    opportunity_id
+    opportunity_id, team_segment
 ),
 #migrated
 sal_opportunities AS (
@@ -89,6 +90,7 @@ retail_sales_opportunities AS (
     closed_date,
     lead_source,
     lead_source_bucket,
+    retail_sales_funnel_accumulating_snapshot.team_segment,
     ---- Country based fields
     CASE WHEN shopify_hardware_eligible_on IS NOT NULL THEN country_code ELSE 'Rest of the World' END AS country_code,
     CASE WHEN shopify_hardware_eligible_on IS NOT NULL THEN country_name ELSE 'Rest of the World' END AS country_name,
@@ -147,6 +149,7 @@ SELECT
   created_by,
   owned_by,
   market_segment,
+  team_segment,
   SUM(CASE WHEN SAL = 1 AND is_closed THEN DATE_DIFF(qualified_sal_date, created_date, DAY) ELSE 0 END) as SQL_to_SAL_days,
   SUM(CASE WHEN SAL = 1 AND is_closed THEN DATE_DIFF(closed_date, CAST(qualified_sal_date AS DATE), DAY) ELSE 0 END)  AS SAL_to_closed_days,
   SUM(CASE WHEN is_closed THEN DATE_DIFF(closed_date, CAST(created_date AS DATE), DAY) ELSE 0 END) AS SQL_to_closed_days,
@@ -169,4 +172,4 @@ WHERE
   DATE(closed_date) >= DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 20 MONTH), MONTH)
   AND DATE(closed_date) <= DATE_TRUNC(CURRENT_DATE(), MONTH) + INTERVAL 1 MONTH - INTERVAL 1 DAY
 GROUP BY
-  1,2,3,4,5,6,7,8,9,10,11,12,13
+  1,2,3,4,5,6,7,8,9,10,11,12,13,14
