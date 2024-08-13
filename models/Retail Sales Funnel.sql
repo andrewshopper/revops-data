@@ -292,13 +292,19 @@ marketing_qualified_leads AS (
           WHEN SPLIT(ble.region, ' - ')[SAFE_OFFSET(0)] = 'APAC' THEN 'APAC'
           WHEN SPLIT(ble.region, ' - ')[SAFE_OFFSET(0)] = 'EMEA' THEN 'EMEA'
           WHEN SPLIT(ble.region, ' - ')[SAFE_OFFSET(0)] = 'LATAM' THEN 'LATAM'
+          -- WHEN SPLIT(bl.region__c, ' - ')[SAFE_OFFSET(0)] = 'AMER' THEN 'AMER'
+          -- WHEN SPLIT(bl.region__c, ' - ')[SAFE_OFFSET(0)] = 'APAC' THEN 'APAC'
+          -- WHEN SPLIT(bl.region__c, ' - ')[SAFE_OFFSET(0)] = 'EMEA' THEN 'EMEA'
+          -- WHEN SPLIT(bl.region__c, ' - ')[SAFE_OFFSET(0)] = 'LATAM' THEN 'LATAM'
           ELSE 'Unknown Region'
         END AS region_code,
         SPLIT(ble.region, ' - ')[SAFE_OFFSET(1)] AS country_name,
+        -- SPLIT(bl.region__c, ' - ')[SAFE_OFFSET(1)] AS country_name,
         cd.country_code,
-        DATE_TRUNC(new_sales_ready_at, DAY) AS datetime,
+        DATE_TRUNC(ble.new_sales_ready_at, DAY) AS datetime,
         'Not Applicable for MQLs' AS current_opportunity_stage,
         ble.lead_source,
+        -- bl.leadsource,
         -- COALESCE(CASE WHEN bl.Owner_Role__c LIKE '%N3%RET%' 
         -- THEN 'N3 Retail' ELSE shd.lead_source_bucket END, 'Outbound') AS lead_source_bucket,
         COALESCE(shd.lead_source_bucket, 'Outbound') AS lead_source_bucket,
@@ -334,25 +340,35 @@ end as revenue_band,
         'Not Applicable for MQLs' as created_by,
         'Not Applicable for MQLs' as owned_by,
         'Not Applicable for MQLs' as market_segment,
-        'Not Applicable for MQLs' as team_segment,
+        -- 'Not Applicable for MQLs' as team_segment, 
+        CASE WHEN bl.Owner_Role__c LIKE 'AMER-%N3%' THEN 'N3 Retail for MQL only' ELSE 'Internal for MQL only' end as team_segment,
+        -- case when owner_role like N3 Retail then 'N3 Retail for MQL only' else 'Internal for MQL only' end as team_segment
         0 AS total_locations,
         0 AS total_payments_amount,
         COUNT(*) AS total_leads
     FROM `shopify-dw.sales.salesforce_leads` AS ble
     LEFT JOIN `shopify-dw.raw_salesforce_banff.lead` bl
-    -- LEFT JOIN `sdp-prd-commercial.raw_salesforce_banff.from_longboat_leads` AS bl
         ON bl.id = ble.lead_id
-    LEFT JOIN `sdp-prd-commercial.raw_salesforce_trident.from_longboat_leads` AS tl
-        ON tl.id = ble.lead_id
+    -- FROM `shopify-dw.raw_salesforce_banff.lead` bl
+    -- LEFT JOIN `shopify-dw.sales.salesforce_leads` AS ble
+    --     ON bl.id = ble.lead_id
+    -- LEFT JOIN `sdp-prd-commercial.raw_salesforce_trident.from_longboat_leads` AS tl
+    LEFT JOIN `shopify-dw.static_datasets.raw_salesforce_trident_leads` AS tl
+        -- ON tl.id = ble.lead_id
+        ON tl.id = bl.id
     LEFT JOIN `shopify-dw.utils.countries` AS cd
         ON cd.country_name = SPLIT(ble.region, ' - ')[SAFE_OFFSET(1)] -- ble country_name
+        -- ON cd.country_name = SPLIT(bl.region__c, ' - ')[SAFE_OFFSET(1)] -- ble country_name
     LEFT JOIN sales_header_dimension AS shd
         ON LOWER(ble.lead_source) = shd.lead_source
+        -- ON LOWER(bl.leadsource) = shd.lead_source
     WHERE TRUE 
         AND ble.primary_product_interest = 'POS Pro'
+        -- AND bl.Primary_Product_Interest__c = 'POS Pro'
         -- FILTER FOR VALID MQLs
         AND bl.isdeleted = false
         AND ble.lead_source NOT LIKE '%partner%'
+        -- AND bl.leadsource NOT LIKE '%partner%'
         AND (
             COALESCE(bl.Annual_Offline_Revenue__c, tl.annual_revenue_band) IN (
                 '$250K - $400k',
@@ -369,17 +385,13 @@ end as revenue_band,
                 '$250,000 to $1,000,000',
                 '$1,000,000 to $10,000,000',
                 '$1,000,000+',
-                '$0 to $250,000',
-                '$50,000 to $250,000',
-                '$10,000,000+',
-                '$5,000 to $50,000',
-                'Up to $5,000'
+                '$10,000,000+'
             )
             OR (
                 cd.country_code IN ('ES', 'IT') AND COALESCE(bl.Annual_Offline_Revenue__c, tl.annual_revenue_band) IN ('$50,000 to $250,000, revenue_between_50000_250000')
             )
         )
-    GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+    GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
 )
 
 -- We originally pulled the inbound calls from hive.raw_google_sheets.retail_inbound_calls but this source appeared to be missing information.
