@@ -4,13 +4,13 @@ WITH
 
 referring_partner AS (
 SELECT
-  lead_id,
-  referring_partner_id[offset] AS partner_id,
-  referring_partner_name[offset] AS partner_name,
-  referral_timestamp[offset] AS referral_timestamp,
-  referral_index[offset] AS referral_index
-FROM `shopify-dw.scratch.derekfeher_modelled_leads_referring_partner_fix`,
-UNNEST(referring_partner_id) AS partner_id WITH OFFSET AS offset
+lead_id,
+rp.referring_partner_id AS partner_id,
+rp.referring_partner_name AS partner_name,
+rp.referral_timestamp AS referral_timestamp,
+rp.referral_index AS referral_index,
+FROM `shopify-dw.sales.sales_leads_v1`, UNNEST(referring_partner_attributes) rp
+WHERE referring_partner_attributes IS NOT NULL
 ),
 
 ######
@@ -21,7 +21,6 @@ leads_from_salesforce AS (
 SELECT
 lead_id
 FROM `shopify-dw.sales.sales_leads` leads
--- LEFT JOIN `shopify-dw.raw_partners.partner_leads` pl
 LEFT JOIN `shopify-dw.base.base__partner_leads` pl
     ON pl.salesforce_reference_id = leads.lead_id
 ),
@@ -71,22 +70,23 @@ SELECT
 FROM `shopify-dw.base.base__partner_leads` leads
 JOIN consolidated_leads_id id
     ON leads.salesforce_reference_id = id.lead_id
-WHERE
-salesforce_reference_id NOT IN ('00Q8V00001YIahtUAD')
 ),
 
 fixing_raw_partners_partner_leads AS (
-SELECT
-    organization_id, #this is shopify_partner_id
-    membership_id,
-    business_name,
-    business_website,
-    country,
-    product,
-    salesforce_reference_id,
-    shop_id
-FROM fixing_raw_partners_partner_leads_step1
-WHERE rn=1
+SELECT 
+leads.organization_id,
+membership_id,
+business_name,
+business_website,
+country,
+product,
+salesforce_reference_id,
+shop_id
+FROM `shopify-dw.base.base__partner_leads` leads
+JOIN consolidated_leads_id id
+    ON leads.salesforce_reference_id = id.lead_id
+WHERE salesforce_reference_object = 'Lead'
+QUALIFY ROW_NUMBER() OVER (PARTITION BY salesforce_reference_id,membership_id ORDER BY updated_at DESC) = 1
 ),
 
 partner_sales_assistance AS ( #fixed, eventually get rid of this CTE and plug normally as a left join
@@ -113,7 +113,7 @@ FROM (SELECT
   partner_id,
   program_membership
 FROM 
-  `sdp-for-analysts-platform.rev_ops_prod.derekfeher_intermediate_partner_dimension_current`,
+  `shopify-dw.accounts_and_administration.partner_attributes_v1`,
   UNNEST(all_program_memberships) AS program_membership)
 WHERE program_membership LIKE '%payment%'
 GROUP BY ALL
@@ -255,8 +255,8 @@ LEFT JOIN `shopify-dw.scratch.derekfeher_modelled_partnership_country_dimension`
     ON c.country_code = pl.country
 LEFT JOIN referring_partner rp
     ON rp.lead_id = leads.lead_id
-LEFT JOIN `sdp-for-analysts-platform.rev_ops_prod.derekfeher_intermediate_partner_dimension_current` pd
-    ON COALESCE(rp.partner_id, SAFE_CAST(opp.winning_partner_id AS INT64)) = pd.partner_id
+LEFT JOIN `shopify-dw.accounts_and_administration.partner_attributes_v1` pd
+    ON COALESCE(rp.partner_id, pl.organization_id, SAFE_CAST(opp.winning_partner_id AS INT64)) = pd.partner_id
 LEFT JOIN `shopify-dw.raw_salesforce_banff.campaignmember` cm
 on cm.leadid = bl.id
 LEFT JOIN `shopify-dw.raw_salesforce_banff.campaign` campaign
@@ -500,8 +500,7 @@ LEFT JOIN `shopify-dw.raw_salesforce_banff.lead` bl
     ON bl.id = apl.lead_id
 LEFT JOIN payment_partners payment
     ON payment.partner_id = apl.shopify_partner_id
-WHERE lead_id IS NOT NULL AND (apl.lead_source IN ('Partner POS Referral','Partner Referral')
-OR apl.lead_source_original IN ('Partner POS Referral','Partner Referral'))
+WHERE lead_id IS NOT NULL AND apl.lead_source_original IN ('Partner POS Referral','Partner Referral')
 QUALIFY ROW_NUMBER() OVER (PARTITION BY apl.lead_id, shopify_partner_id) = 1
 )
 
@@ -596,6 +595,13 @@ WHERE lead_id IS NOT NULL AND apl.lead_source_original NOT IN ('Partner POS Refe
 QUALIFY ROW_NUMBER() OVER (PARTITION BY apl.lead_id, shopify_partner_id) = 1
 )
 
+, unioned as (
 select * from pql 
 union all 
 select * from mql
+)
+
+select u.*, rr.team_segment, rr.ops_market_segment
+from unioned u
+left join `sdp-for-analysts-platform.rev_ops_prod.raw_rep_role_attributes` rr
+on u.lead_owner_role = rr.rep_role
